@@ -29,6 +29,22 @@ const getAllBusinesses = async (req, res, next) => {
             query.location = { $regex: req.query.location, $options: 'i' };
         }
 
+        // Filter by paid up capital range
+        if (req.query.paidUpCapitalRange) {
+            query.paidUpCapitalRange = req.query.paidUpCapitalRange;
+        }
+
+        // Filter by paid up capital amount (min/max)
+        if (req.query.minCapital || req.query.maxCapital) {
+            query.paidUpCapital = {};
+            if (req.query.minCapital) {
+                query.paidUpCapital.$gte = parseInt(req.query.minCapital);
+            }
+            if (req.query.maxCapital) {
+                query.paidUpCapital.$lte = parseInt(req.query.maxCapital);
+            }
+        }
+
         // Build sort object
         let sort = {};
         switch (req.query.sortBy) {
@@ -40,6 +56,9 @@ const getAllBusinesses = async (req, res, next) => {
                 break;
             case 'favorites':
                 sort.favoriteCount = req.query.sortOrder === 'asc' ? 1 : -1;
+                break;
+            case 'capital':
+                sort.paidUpCapital = req.query.sortOrder === 'asc' ? 1 : -1;
                 break;
             case 'newest':
                 sort.createdAt = -1;
@@ -65,24 +84,35 @@ const getAllBusinesses = async (req, res, next) => {
 
         const total = await Business.countDocuments(query);
 
-        // If user is authenticated, mark favorites
-        let businessesResponse = businesses.map(business => ({
-            id: business._id,
-            name: business.name,
-            category: business.category,
-            description: business.description,
-            location: business.location,
-            coordinates: business.coordinates,
-            phone: business.phone,
-            email: business.email,
-            website: business.website,
-            specialOffers: business.specialOffers,
-            images: business.images,
-            viewCount: business.viewCount,
-            favoriteCount: business.favoriteCount,
-            isFavorite: req.user ? req.user.favorites.includes(business._id) : false,
-            createdAt: business.createdAt
-        }));
+        // Format response based on whether request is from crawler
+        let businessesResponse;
+
+        if (req.isCrawler) {
+            // Return SEO-friendly data for crawlers (hide sensitive info)
+            businessesResponse = businesses.map(business => business.getPublicData());
+        } else {
+            // Return full data for regular users
+            businessesResponse = businesses.map(business => ({
+                id: business._id,
+                name: business.name,
+                category: business.category,
+                description: business.description,
+                location: business.location,
+                phone: business.phone,
+                email: business.email,
+                website: business.website,
+                paidUpCapital: business.paidUpCapital,
+                paidUpCapitalRange: business.paidUpCapitalRange,
+                specialOffers: business.specialOffers,
+                images: business.images,
+                viewCount: business.viewCount,
+                favoriteCount: business.favoriteCount,
+                seoSlug: business.seoSlug,
+                metaDescription: business.metaDescription,
+                isFavorite: req.user ? req.user.favorites.includes(business._id) : false,
+                createdAt: business.createdAt
+            }));
+        }
 
         res.status(200).json(
             formatPaginatedResponse(businessesResponse, page, limit, total, 'Businesses retrieved successfully')
@@ -93,14 +123,22 @@ const getAllBusinesses = async (req, res, next) => {
 };
 
 /**
- * Get business by ID
+ * Get business by ID or SEO slug
  * GET /api/businesses/:id
  */
 const getBusinessById = async (req, res, next) => {
     try {
         const { id } = req.params;
 
-        const business = await Business.findById(id);
+        // Try to find by MongoDB ObjectId first, then by SEO slug
+        let business;
+        if (id.match(/^[0-9a-fA-F]{24}$/)) {
+            // Valid ObjectId
+            business = await Business.findById(id);
+        } else {
+            // Assume it's a SEO slug
+            business = await Business.findOne({ seoSlug: id });
+        }
 
         if (!business || !business.isActive) {
             return res.status(404).json(
@@ -108,30 +146,112 @@ const getBusinessById = async (req, res, next) => {
             );
         }
 
-        // Increment view count
-        await business.incrementViews();
+        // Increment view count (only for non-crawler requests to avoid inflating stats)
+        if (!req.isCrawler) {
+            await business.incrementViews();
+        }
 
-        const businessResponse = {
-            id: business._id,
-            name: business.name,
-            category: business.category,
-            description: business.description,
-            location: business.location,
-            coordinates: business.coordinates,
-            phone: business.phone,
-            email: business.email,
-            website: business.website,
-            specialOffers: business.specialOffers,
-            images: business.images,
-            viewCount: business.viewCount,
-            favoriteCount: business.favoriteCount,
-            isFavorite: req.user ? req.user.favorites.includes(business._id) : false,
-            createdAt: business.createdAt,
-            updatedAt: business.updatedAt
-        };
+        // Format response based on whether request is from crawler
+        let businessResponse;
+
+        if (req.isCrawler) {
+            // Return SEO-friendly data for crawlers (hide sensitive info)
+            businessResponse = business.getPublicData();
+        } else {
+            // Return full data for regular users
+            businessResponse = {
+                id: business._id,
+                name: business.name,
+                category: business.category,
+                description: business.description,
+                location: business.location,
+                phone: business.phone,
+                email: business.email,
+                website: business.website,
+                paidUpCapital: business.paidUpCapital,
+                paidUpCapitalRange: business.paidUpCapitalRange,
+                specialOffers: business.specialOffers,
+                images: business.images,
+                viewCount: business.viewCount,
+                favoriteCount: business.favoriteCount,
+                seoSlug: business.seoSlug,
+                metaDescription: business.metaDescription,
+                isFavorite: req.user ? req.user.favorites.includes(business._id) : false,
+                createdAt: business.createdAt,
+                updatedAt: business.updatedAt
+            };
+        }
 
         res.status(200).json(
             formatSuccessResponse(businessResponse, 'Business retrieved successfully')
+        );
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * Get similar businesses for a specific business
+ * GET /api/businesses/:id/similar
+ */
+const getSimilarBusinesses = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const limit = parseInt(req.query.limit) || 100;
+
+        // Find the business first
+        let business;
+        if (id.match(/^[0-9a-fA-F]{24}$/)) {
+            business = await Business.findById(id);
+        } else {
+            business = await Business.findOne({ seoSlug: id });
+        }
+
+        if (!business || !business.isActive) {
+            return res.status(404).json(
+                formatErrorResponse('Business not found', 'BUSINESS_NOT_FOUND')
+            );
+        }
+
+        // Get similar businesses
+        const similarBusinesses = await business.getSimilarBusinesses(limit);
+
+        // Format response based on whether request is from crawler
+        let businessesResponse;
+
+        if (req.isCrawler) {
+            // Return SEO-friendly data for crawlers (hide sensitive info)
+            businessesResponse = similarBusinesses.map(b => ({
+                id: b._id,
+                name: b.name,
+                category: b.category,
+                location: b.location,
+                seoSlug: b.seoSlug,
+                viewCount: b.viewCount,
+                favoriteCount: b.favoriteCount,
+                createdAt: b.createdAt
+            }));
+        } else {
+            // Return full data for regular users
+            businessesResponse = similarBusinesses.map(b => ({
+                id: b._id,
+                name: b.name,
+                category: b.category,
+                location: b.location,
+                paidUpCapitalRange: b.paidUpCapitalRange,
+                viewCount: b.viewCount,
+                favoriteCount: b.favoriteCount,
+                seoSlug: b.seoSlug,
+                isFavorite: req.user ? req.user.favorites.includes(b._id) : false,
+                createdAt: b.createdAt
+            }));
+        }
+
+        res.status(200).json(
+            formatSuccessResponse(
+                businessesResponse,
+                `Found ${businessesResponse.length} similar businesses`
+            )
         );
     } catch (error) {
         next(error);
@@ -154,12 +274,15 @@ const createBusiness = async (req, res, next) => {
             category: business.category,
             description: business.description,
             location: business.location,
-            coordinates: business.coordinates,
             phone: business.phone,
             email: business.email,
             website: business.website,
+            paidUpCapital: business.paidUpCapital,
+            paidUpCapitalRange: business.paidUpCapitalRange,
             specialOffers: business.specialOffers,
             images: business.images,
+            seoSlug: business.seoSlug,
+            metaDescription: business.metaDescription,
             viewCount: business.viewCount,
             favoriteCount: business.favoriteCount,
             createdAt: business.createdAt
@@ -201,12 +324,15 @@ const updateBusiness = async (req, res, next) => {
             category: updatedBusiness.category,
             description: updatedBusiness.description,
             location: updatedBusiness.location,
-            coordinates: updatedBusiness.coordinates,
             phone: updatedBusiness.phone,
             email: updatedBusiness.email,
             website: updatedBusiness.website,
+            paidUpCapital: updatedBusiness.paidUpCapital,
+            paidUpCapitalRange: updatedBusiness.paidUpCapitalRange,
             specialOffers: updatedBusiness.specialOffers,
             images: updatedBusiness.images,
+            seoSlug: updatedBusiness.seoSlug,
+            metaDescription: updatedBusiness.metaDescription,
             viewCount: updatedBusiness.viewCount,
             favoriteCount: updatedBusiness.favoriteCount,
             isActive: updatedBusiness.isActive,
@@ -250,7 +376,7 @@ const deleteBusiness = async (req, res, next) => {
 };
 
 /**
- * Get business categories
+ * Get business categories with paid up capital ranges
  * GET /api/businesses/categories
  */
 const getCategories = async (req, res, next) => {
@@ -287,11 +413,40 @@ const getCategories = async (req, res, next) => {
     }
 };
 
+/**
+ * Get paid up capital ranges
+ * GET /api/businesses/capital-ranges
+ */
+const getCapitalRanges = async (req, res, next) => {
+    try {
+        const capitalRanges = Business.getCapitalRanges();
+
+        // Get count for each range
+        const rangesWithCounts = await Promise.all(
+            capitalRanges.map(async (range) => {
+                const count = await Business.countDocuments({
+                    paidUpCapitalRange: range,
+                    isActive: true
+                });
+                return { name: range, count };
+            })
+        );
+
+        res.status(200).json(
+            formatSuccessResponse(rangesWithCounts, 'Capital ranges retrieved successfully')
+        );
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = {
     getAllBusinesses,
     getBusinessById,
+    getSimilarBusinesses,
     createBusiness,
     updateBusiness,
     deleteBusiness,
-    getCategories
+    getCategories,
+    getCapitalRanges
 };

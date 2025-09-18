@@ -13,6 +13,7 @@ const businessRoutes = require('./routes/businesses');
 // Import middleware
 const errorHandler = require('./middleware/errorHandler');
 const logger = require('./middleware/logging');
+const { detectCrawler, setCrawlerHeaders } = require('./middleware/crawlerDetection');
 
 // Import database config
 const connectDB = require('./config/database');
@@ -45,6 +46,10 @@ app.use(express.urlencoded({ extended: true }));
 
 // Logging middleware
 app.use(logger);
+
+// Global crawler detection (for all routes that need it)
+app.use(detectCrawler);
+app.use(setCrawlerHeaders);
 
 // Health check endpoint
 app.get('/health', (req, res) => {

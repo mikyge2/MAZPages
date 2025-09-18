@@ -8,16 +8,16 @@ const jwt = require('jsonwebtoken');
  */
 const generateToken = (userId, role = 'user') => {
   return jwt.sign(
-    {
-      id: userId,
-      role: role
-    },
-    process.env.JWT_SECRET,
-    {
-      expiresIn: process.env.JWT_EXPIRE || '7d',
-      issuer: 'yellow-pages-api',
-      audience: 'yellow-pages-users'
-    }
+      {
+        id: userId,
+        role: role
+      },
+      process.env.JWT_SECRET,
+      {
+        expiresIn: process.env.JWT_EXPIRE || '7d',
+        issuer: 'yellow-pages-api',
+        audience: 'yellow-pages-users'
+      }
   );
 };
 
@@ -34,4 +34,3 @@ module.exports = {
   generateToken,
   verifyToken
 };
-

@@ -21,4 +21,3 @@ router.post('/login', validateUserLogin, login);
 router.get('/profile', authenticate, getProfile);
 
 module.exports = router;
-
