@@ -109,6 +109,8 @@ const getAllBusinesses = async (req, res, next) => {
                 favoriteCount: business.favoriteCount,
                 seoSlug: business.seoSlug,
                 metaDescription: business.metaDescription,
+                managerInfo: business.managerInfo,
+                registrationInfo: business.registrationInfo,
                 isFavorite: req.user ? req.user.favorites.includes(business._id) : false,
                 createdAt: business.createdAt
             }));
@@ -176,6 +178,8 @@ const getBusinessById = async (req, res, next) => {
                 favoriteCount: business.favoriteCount,
                 seoSlug: business.seoSlug,
                 metaDescription: business.metaDescription,
+                managerInfo: business.managerInfo,
+                registrationInfo: business.registrationInfo,
                 isFavorite: req.user ? req.user.favorites.includes(business._id) : false,
                 createdAt: business.createdAt,
                 updatedAt: business.updatedAt
@@ -242,6 +246,7 @@ const getSimilarBusinesses = async (req, res, next) => {
                 viewCount: b.viewCount,
                 favoriteCount: b.favoriteCount,
                 seoSlug: b.seoSlug,
+                region: b.registrationInfo?.region,
                 isFavorite: req.user ? req.user.favorites.includes(b._id) : false,
                 createdAt: b.createdAt
             }));
@@ -283,6 +288,8 @@ const createBusiness = async (req, res, next) => {
             images: business.images,
             seoSlug: business.seoSlug,
             metaDescription: business.metaDescription,
+            managerInfo: business.managerInfo,
+            registrationInfo: business.registrationInfo,
             viewCount: business.viewCount,
             favoriteCount: business.favoriteCount,
             createdAt: business.createdAt
@@ -333,6 +340,8 @@ const updateBusiness = async (req, res, next) => {
             images: updatedBusiness.images,
             seoSlug: updatedBusiness.seoSlug,
             metaDescription: updatedBusiness.metaDescription,
+            managerInfo: updatedBusiness.managerInfo,
+            registrationInfo: updatedBusiness.registrationInfo,
             viewCount: updatedBusiness.viewCount,
             favoriteCount: updatedBusiness.favoriteCount,
             isActive: updatedBusiness.isActive,

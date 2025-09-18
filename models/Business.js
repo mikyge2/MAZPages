@@ -5,7 +5,7 @@ const businessSchema = new mongoose.Schema({
         type: String,
         required: [true, 'Business name is required'],
         trim: true,
-        maxlength: [100, 'Business name cannot exceed 100 characters'],
+        maxlength: [200, 'Business name cannot exceed 200 characters'], // Increased for bilingual names
         index: true // Index for SEO-friendly queries
     },
     category: {
@@ -24,24 +24,34 @@ const businessSchema = new mongoose.Schema({
             'Real Estate',
             'Finance',
             'Legal',
+            'Manufacturing',
+            'Construction',
+            'Agriculture',
+            'Transportation',
+            'Telecommunications',
+            'Energy',
+            'Mining',
+            'Tourism',
             'Other'
         ],
+        default: 'Other',
         index: true // Index for category-based queries
     },
     description: {
         type: String,
         trim: true,
-        maxlength: [500, 'Description cannot exceed 500 characters']
+        maxlength: [1000, 'Description cannot exceed 1000 characters'] // Increased for detailed registration info
     },
     location: {
         type: String,
         required: [true, 'Business location is required'],
-        trim: true
+        trim: true,
+        maxlength: [300, 'Location cannot exceed 300 characters'] // Increased for detailed address
     },
     phone: {
         type: String,
         trim: true,
-        match: [/^[\d\s\-\+\(\)]+$/, 'Please enter a valid phone number'],
+        maxlength: [100, 'Phone cannot exceed 100 characters'], // Increased for multiple numbers
         select: true // Will be conditionally excluded for crawlers
     },
     email: {
@@ -65,20 +75,25 @@ const businessSchema = new mongoose.Schema({
     paidUpCapital: {
         type: Number,
         min: [0, 'Paid up capital cannot be negative'],
-        max: [1000000000, 'Paid up capital too large'], // 1 billion max
+        max: [10000000000, 'Paid up capital too large'], // 10 billion max
+        default: 0,
         select: true // Will be conditionally excluded for crawlers
     },
     paidUpCapitalRange: {
         type: String,
         enum: [
-            'Under $10K',
+            'Under $1K',
+            '$1K - $5K',
+            '$5K - $10K',
             '$10K - $50K',
             '$50K - $100K',
             '$100K - $500K',
             '$500K - $1M',
             '$1M - $5M',
             '$5M - $10M',
-            '$10M+',
+            '$10M - $50M',
+            '$50M - $100M',
+            '$100M+',
             'Not Disclosed'
         ],
         default: 'Not Disclosed'
@@ -95,6 +110,64 @@ const businessSchema = new mongoose.Schema({
             'Please enter a valid image URL'
         ]
     }],
+    // Manager Information
+    managerInfo: {
+        managerName: {
+            type: String,
+            trim: true,
+            maxlength: [150, 'Manager name cannot exceed 150 characters']
+        }
+    },
+    // Registration & Legal Information (from CSV)
+    registrationInfo: {
+        licenseNumber: {
+            type: String,
+            trim: true,
+            index: true
+        },
+        registrationNumber: {
+            type: String,
+            trim: true,
+            index: true
+        },
+        tin: {
+            type: String,
+            trim: true,
+            index: true
+        },
+        legalStatus: {
+            type: String,
+            trim: true
+        },
+        registeredDate: {
+            type: Date
+        },
+        renewedFrom: {
+            type: String,
+            trim: true
+        },
+        region: {
+            type: String,
+            trim: true,
+            index: true
+        },
+        zone: {
+            type: String,
+            trim: true
+        },
+        subcityWoreda: {
+            type: String,
+            trim: true
+        },
+        kebele: {
+            type: String,
+            trim: true
+        },
+        houseNo: {
+            type: String,
+            trim: true
+        }
+    },
     isActive: {
         type: Boolean,
         default: true
@@ -128,6 +201,7 @@ const businessSchema = new mongoose.Schema({
                 delete ret.email;
                 delete ret.paidUpCapital;
                 delete ret.paidUpCapitalRange;
+                delete ret.registrationInfo;
             }
             return ret;
         }
@@ -142,20 +216,55 @@ businessSchema.index({ category: 1, paidUpCapital: 1 }); // Compound index for c
 businessSchema.index({ location: 1 });
 businessSchema.index({ seoSlug: 1 });
 businessSchema.index({ isActive: 1, viewCount: -1 }); // For popular businesses
+businessSchema.index({ 'registrationInfo.region': 1 }); // For region-based queries
+businessSchema.index({ 'registrationInfo.licenseNumber': 1 }); // For license lookup
+businessSchema.index({ 'registrationInfo.tin': 1 }); // For TIN lookup
 
-// Pre-save middleware to generate SEO slug
+// Pre-save middleware to generate SEO slug and calculate capital range
 businessSchema.pre('save', function(next) {
+    // Generate SEO slug if name is modified or slug doesn't exist
     if (this.isModified('name') || !this.seoSlug) {
         // Generate SEO-friendly slug from business name
         this.seoSlug = this.name
             .toLowerCase()
-            .replace(/[^a-z0-9\s-]/g, '') // Remove special characters
+            .replace(/[^a-z0-9\s\-\u1200-\u137F]/g, '') // Allow Ethiopian characters
             .replace(/\s+/g, '-') // Replace spaces with hyphens
             .replace(/-+/g, '-') // Remove duplicate hyphens
-            .trim('-'); // Remove leading/trailing hyphens
+            .replace(/^-|-$/g, '') // Remove leading/trailing hyphens
+            .substring(0, 50); // Limit length
 
         // Add random suffix to ensure uniqueness
         this.seoSlug += '-' + Math.random().toString(36).substr(2, 6);
+    }
+
+    // Auto-calculate paid up capital range
+    if (this.isModified('paidUpCapital') && this.paidUpCapital > 0) {
+        const capital = this.paidUpCapital;
+        if (capital < 1000) {
+            this.paidUpCapitalRange = 'Under $1K';
+        } else if (capital < 5000) {
+            this.paidUpCapitalRange = '$1K - $5K';
+        } else if (capital < 10000) {
+            this.paidUpCapitalRange = '$5K - $10K';
+        } else if (capital < 50000) {
+            this.paidUpCapitalRange = '$10K - $50K';
+        } else if (capital < 100000) {
+            this.paidUpCapitalRange = '$50K - $100K';
+        } else if (capital < 500000) {
+            this.paidUpCapitalRange = '$100K - $500K';
+        } else if (capital < 1000000) {
+            this.paidUpCapitalRange = '$500K - $1M';
+        } else if (capital < 5000000) {
+            this.paidUpCapitalRange = '$1M - $5M';
+        } else if (capital < 10000000) {
+            this.paidUpCapitalRange = '$5M - $10M';
+        } else if (capital < 50000000) {
+            this.paidUpCapitalRange = '$10M - $50M';
+        } else if (capital < 100000000) {
+            this.paidUpCapitalRange = '$50M - $100M';
+        } else {
+            this.paidUpCapitalRange = '$100M+';
+        }
     }
 
     // Auto-generate meta description if not provided
@@ -189,7 +298,7 @@ businessSchema.methods.getSimilarBusinesses = async function(limit = 100) {
     }
 
     let similarBusinesses = await Business.find(query)
-        .select('name category location paidUpCapitalRange viewCount favoriteCount createdAt seoSlug')
+        .select('name category location paidUpCapitalRange viewCount favoriteCount createdAt seoSlug registrationInfo.region')
         .sort({ viewCount: -1, favoriteCount: -1 })
         .limit(limit);
 
@@ -204,7 +313,7 @@ businessSchema.methods.getSimilarBusinesses = async function(limit = 100) {
             category: this.category,
             isActive: true
         })
-            .select('name category location paidUpCapitalRange viewCount favoriteCount createdAt seoSlug')
+            .select('name category location paidUpCapitalRange viewCount favoriteCount createdAt seoSlug registrationInfo.region')
             .sort({ viewCount: -1, favoriteCount: -1 })
             .limit(remaining);
 
@@ -229,6 +338,9 @@ businessSchema.methods.getPublicData = function() {
         favoriteCount: this.favoriteCount,
         seoSlug: this.seoSlug,
         metaDescription: this.metaDescription,
+        managerInfo: {
+            managerName: this.managerInfo?.managerName
+        },
         createdAt: this.createdAt,
         updatedAt: this.updatedAt
     };
@@ -237,16 +349,57 @@ businessSchema.methods.getPublicData = function() {
 // Static method to get capital ranges for filtering
 businessSchema.statics.getCapitalRanges = function() {
     return [
-        'Under $10K',
+        'Under $1K',
+        '$1K - $5K',
+        '$5K - $10K',
         '$10K - $50K',
         '$50K - $100K',
         '$100K - $500K',
         '$500K - $1M',
         '$1M - $5M',
         '$5M - $10M',
-        '$10M+',
+        '$10M - $50M',
+        '$50M - $100M',
+        '$100M+',
         'Not Disclosed'
     ];
+};
+
+// Static method to categorize business based on name/description
+businessSchema.statics.categorizeByName = function(tradeName, description = '') {
+    const name = (tradeName + ' ' + description).toLowerCase();
+
+    // Define category keywords
+    const categoryKeywords = {
+        'Hospitals': ['hospital', 'clinic', 'medical', 'health', 'pharmacy', 'diagnostic'],
+        'Restaurants': ['restaurant', 'cafe', 'bar', 'hotel', 'food', 'coffee', 'pizza', 'bakery'],
+        'Import/Export': ['import', 'export', 'trading', 'international', 'freight', 'cargo'],
+        'Retail': ['shop', 'store', 'market', 'supermarket', 'boutique', 'fashion', 'clothing'],
+        'Technology': ['tech', 'software', 'computer', 'internet', 'digital', 'IT', 'system'],
+        'Education': ['school', 'college', 'university', 'education', 'training', 'academy'],
+        'Entertainment': ['cinema', 'theatre', 'entertainment', 'recreation', 'gaming', 'sport'],
+        'Automotive': ['auto', 'car', 'vehicle', 'garage', 'mechanic', 'spare parts'],
+        'Real Estate': ['real estate', 'property', 'construction', 'building', 'developer'],
+        'Finance': ['bank', 'insurance', 'financial', 'loan', 'credit', 'microfinance'],
+        'Legal': ['law', 'legal', 'advocate', 'lawyer', 'attorney', 'court'],
+        'Manufacturing': ['factory', 'manufacturing', 'production', 'industry', 'textile', 'leather'],
+        'Transportation': ['transport', 'logistics', 'delivery', 'shipping', 'bus', 'taxi'],
+        'Agriculture': ['agriculture', 'farm', 'crop', 'livestock', 'dairy', 'poultry'],
+        'Construction': ['construction', 'contractor', 'building', 'engineering', 'architecture'],
+        'Telecommunications': ['telecom', 'communication', 'mobile', 'network', 'internet'],
+        'Energy': ['energy', 'power', 'electricity', 'solar', 'fuel', 'gas'],
+        'Mining': ['mining', 'quarry', 'mineral', 'extraction', 'geological'],
+        'Tourism': ['tourism', 'travel', 'tour', 'guide', 'resort', 'lodge']
+    };
+
+    // Find matching category
+    for (const [category, keywords] of Object.entries(categoryKeywords)) {
+        if (keywords.some(keyword => name.includes(keyword))) {
+            return category;
+        }
+    }
+
+    return 'Other'; // Default category
 };
 
 module.exports = mongoose.model('Business', businessSchema);

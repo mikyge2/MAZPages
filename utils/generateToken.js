@@ -7,18 +7,18 @@ const jwt = require('jsonwebtoken');
  * @returns {string} JWT token
  */
 const generateToken = (userId, role = 'user') => {
-  return jwt.sign(
-      {
-        id: userId,
-        role: role
-      },
-      process.env.JWT_SECRET,
-      {
-        expiresIn: process.env.JWT_EXPIRE || '7d',
-        issuer: 'yellow-pages-api',
-        audience: 'yellow-pages-users'
-      }
-  );
+    return jwt.sign(
+        {
+            id: userId,
+            role: role
+        },
+        process.env.JWT_SECRET,
+        {
+            expiresIn: process.env.JWT_EXPIRE || '7d',
+            issuer: 'yellow-pages-api',
+            audience: 'yellow-pages-users'
+        }
+    );
 };
 
 /**
@@ -27,10 +27,10 @@ const generateToken = (userId, role = 'user') => {
  * @returns {object} Decoded token payload
  */
 const verifyToken = (token) => {
-  return jwt.verify(token, process.env.JWT_SECRET);
+    return jwt.verify(token, process.env.JWT_SECRET);
 };
 
 module.exports = {
-  generateToken,
-  verifyToken
+    generateToken,
+    verifyToken
 };
