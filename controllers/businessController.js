@@ -86,35 +86,29 @@ const getAllBusinesses = async (req, res, next) => {
 
         // Format response based on whether request is from crawler
         let businessesResponse;
-
-        if (req.isCrawler) {
-            // Return SEO-friendly data for crawlers (hide sensitive info)
-            businessesResponse = businesses.map(business => business.getPublicData());
-        } else {
-            // Return full data for regular users
-            businessesResponse = businesses.map(business => ({
-                id: business._id,
-                name: business.name,
-                category: business.category,
-                description: business.description,
-                location: business.location,
-                phone: business.phone,
-                email: business.email,
-                website: business.website,
-                paidUpCapital: business.paidUpCapital,
-                paidUpCapitalRange: business.paidUpCapitalRange,
-                specialOffers: business.specialOffers,
-                images: business.images,
-                viewCount: business.viewCount,
-                favoriteCount: business.favoriteCount,
-                seoSlug: business.seoSlug,
-                metaDescription: business.metaDescription,
-                managerInfo: business.managerInfo,
-                registrationInfo: business.registrationInfo,
-                isFavorite: req.user ? req.user.favorites.includes(business._id) : false,
-                createdAt: business.createdAt
-            }));
-        }
+        // Return full data for regular users
+        businessesResponse = businesses.map(business => ({
+            id: business._id,
+            name: business.name,
+            category: business.category,
+            description: business.description,
+            location: business.location,
+            phone: business.phone,
+            email: business.email,
+            website: business.website,
+            paidUpCapital: business.paidUpCapital,
+            paidUpCapitalRange: business.paidUpCapitalRange,
+            specialOffers: business.specialOffers,
+            images: business.images,
+            viewCount: business.viewCount,
+            favoriteCount: business.favoriteCount,
+            seoSlug: business.seoSlug,
+            metaDescription: business.metaDescription,
+            managerInfo: business.managerInfo,
+            registrationInfo: business.registrationInfo,
+            isFavorite: req.user ? req.user.favorites.includes(business._id) : false,
+            createdAt: business.createdAt
+        }));
 
         res.status(200).json(
             formatPaginatedResponse(businessesResponse, page, limit, total, 'Businesses retrieved successfully')

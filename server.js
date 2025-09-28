@@ -36,7 +36,7 @@ app.use(limiter);
 
 // CORS configuration
 app.use(cors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3000' || 'https://neon-yellowpages.preview.emergentagent.com',
+    origin: [process.env.CORS_ORIGIN, 'http://localhost:3000', 'https://mazpages.vercel.app', 'https://neon-yellowpages.preview.emergentagent.com'],
     credentials: true
 }));
 
